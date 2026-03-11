@@ -1,0 +1,488 @@
+﻿diff --git a/agent.py b/agent.py
+index ee91d08..bae088c 100644
+--- a/agent.py
++++ b/agent.py
+@@ -5,6 +5,8 @@ import glob
+ import time
+ import difflib
+ import shutil
++import logging
++from logging.handlers import RotatingFileHandler
+ from pathlib import Path
+ from datetime import datetime
+ from dotenv import load_dotenv
+@@ -31,6 +33,22 @@ load_dotenv()
+ 
+ # ΓöÇΓöÇΓöÇ Rich Console ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ console = Console(highlight=False)
++UNICODE_SAFE = (getattr(sys.stdout, "encoding", "") or "").lower().startswith("utf")
++
++# ΓöÇΓöÇΓöÇ Logging ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++LOG_PATH = Path(os.getenv("AGENT_LOG_FILE", "agent.log"))
++logger = logging.getLogger("claude_code_max")
++logger.setLevel(logging.INFO)
++if not logger.handlers:
++    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
++    file_handler = RotatingFileHandler(
++        LOG_PATH, maxBytes=1_000_000, backupCount=3, encoding="utf-8"
++    )
++    formatter = logging.Formatter(
++        "%(asctime)s [%(levelname)s] %(message)s"
++    )
++    file_handler.setFormatter(formatter)
++    logger.addHandler(file_handler)
+ 
+ # ΓöÇΓöÇΓöÇ Premium Color Palette ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ P = "bold #d97757"       # Primary Coral
+@@ -42,11 +60,56 @@ ERR = "bold #e06c75"     # Error Red
+ WARN = "bold #e5c07b"    # Warning Yellow
+ BORDER = Style(color="#d97757", dim=True)
+ 
++# ΓöÇΓöÇΓöÇ Runtime Config ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++def _env_flag(name: str, default: str = "1") -> bool:
++    return os.getenv(name, default).strip().lower() not in ("0", "false", "no", "")
++
++
++ENABLE_SHELL = _env_flag("AGENT_ENABLE_SHELL", "1")
++ENABLE_GIT = _env_flag("AGENT_ENABLE_GIT", "1")
++ENABLE_WEB = _env_flag("AGENT_ENABLE_WEB", "1")
++
++MODEL_NAME = os.getenv("AGENT_MODEL", "gemini-2.5-flash")
++try:
++    TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.2"))
++except ValueError:
++    TEMPERATURE = 0.2
++try:
++    MAX_OUTPUT_TOKENS = int(os.getenv("AGENT_MAX_OUTPUT_TOKENS", "2048"))
++except ValueError:
++    MAX_OUTPUT_TOKENS = 2048
++
++try:
++    MAX_TOOL_ITERATIONS = int(os.getenv("AGENT_MAX_TOOL_ITERATIONS", "8"))
++except ValueError:
++    MAX_TOOL_ITERATIONS = 8
++
+ # ΓöÇΓöÇΓöÇ Dangerous Commands ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ DANGEROUS_PATTERNS = [
+-    "rm -rf", "rmdir", "del /", "format ", "drop table", "drop database",
+-    "truncate ", "shutdown", "mkfs", "dd if=", ":(){", "deltree",
+-    "Remove-Item", "Clear-Content"
++    "rm -rf",
++    "rm -r /",
++    "sudo rm -rf /",
++    "rmdir",
++    "rd /s /q",
++    "del /",
++    "format ",
++    "format /q",
++    "drop table",
++    "drop database",
++    "truncate ",
++    "shutdown",
++    "shutdown /s",
++    "shutdown /r",
++    "poweroff",
++    "halt",
++    "mkfs",
++    "mkfs.",
++    "dd if=",
++    ":(){",
++    "deltree",
++    "Remove-Item",
++    "Clear-Content",
++    "reg delete",
+ ]
+ 
+ # ΓöÇΓöÇΓöÇ Session Tracking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+@@ -88,6 +151,15 @@ ALIEN_ASCII = r"""
+ 
+ def run_command(command: str) -> str:
+     """Run a shell/terminal command on the user's system. Returns stdout and stderr. Use for installing packages, running scripts, starting servers, running tests, git operations, etc."""
++    if not ENABLE_SHELL:
++        msg = "BLOCKED: Shell commands are disabled by AGENT_ENABLE_SHELL."
++        console.print(Panel(
++            f"[{WARN}]ΓÜá BLOCKED by configuration[/{WARN}]\n"
++            f"[{DIM}]{command}[/{DIM}]",
++            border_style=Style(color="#e5c07b"), title="Safety Guard"
++        ))
++        logger.warning("Blocked shell command (shell disabled): %s", command)
++        return msg
+     # Safety guard
+     cmd_lower = command.lower()
+     for pattern in DANGEROUS_PATTERNS:
+@@ -98,6 +170,7 @@ def run_command(command: str) -> str:
+                 f"[{DIM}]Pattern: {pattern}[/{DIM}]",
+                 border_style=Style(color="#e5c07b"), title="Safety Guard"
+             ))
++            logger.warning("Blocked potentially destructive command: %s (pattern=%s)", command, pattern)
+             return f"BLOCKED: Command contains dangerous pattern '{pattern}'. If this is intentional, the user must run it manually."
+ 
+     console.print(f"  [{S}]ΓÜí exec:[/{S}] [dim]{command}[/dim]")
+@@ -120,24 +193,38 @@ def run_command(command: str) -> str:
+         # Truncate very long output to save tokens
+         if len(output) > 15000:
+             output = output[:7500] + "\n\n... [TRUNCATED] ...\n\n" + output[-7500:]
+-        
++
++        logger.info("Command finished (code=%s): %s", result.returncode, command)
+         return output
+     except subprocess.TimeoutExpired:
++        logger.error("Command timed out after 120 seconds: %s", command)
+         return "Error: Command timed out after 120 seconds."
+     except Exception as e:
++        logger.exception("Error executing command: %s", command)
+         return f"Error executing command: {str(e)}"
+ 
+ 
+ def run_background_command(command: str) -> str:
+     """Start a long-running background process like a dev server. Returns immediately with the process ID. Use for: npm run dev, python -m http.server, flask run, etc."""
++    if not ENABLE_SHELL:
++        msg = "BLOCKED: Background shell commands are disabled by AGENT_ENABLE_SHELL."
++        console.print(Panel(
++            f"[{WARN}]ΓÜá BLOCKED by configuration[/{WARN}]\n"
++            f"[{DIM}]{command}[/{DIM}]",
++            border_style=Style(color="#e5c07b"), title="Safety Guard"
++        ))
++        logger.warning("Blocked background command (shell disabled): %s", command)
++        return msg
+     console.print(f"  [{S}]ΓÜí bg-exec:[/{S}] [dim]{command}[/dim]")
+     try:
+         process = subprocess.Popen(
+             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+             cwd=os.getcwd()
+         )
++        logger.info("Background process started pid=%s cmd=%s", process.pid, command)
+         return f"Γ£ô Background process started with PID {process.pid}. Command: {command}"
+     except Exception as e:
++        logger.exception("Error starting background process: %s", command)
+         return f"Error starting background process: {str(e)}"
+ 
+ 
+@@ -343,6 +430,9 @@ def search_files(directory: str, query: str) -> str:
+ 
+ def web_search(query: str) -> str:
+     """Search the internet using DuckDuckGo for documentation, tutorials, error debugging, API references, Stack Overflow solutions, etc. Returns titles, URLs, and snippets."""
++    if not ENABLE_WEB:
++        logger.info("Web search blocked by configuration: %s", query)
++        return "Web search is disabled by AGENT_ENABLE_WEB."
+     console.print(f"  [{ACC}]≡ƒîÉ web:[/{ACC}] [dim]{query}[/dim]")
+     try:
+         ddgs = DDGS()
+@@ -363,14 +453,20 @@ def web_search(query: str) -> str:
+             url = r.get('href', r.get('link', 'No URL'))
+             body = r.get('body', r.get('snippet', 'No snippet'))[:300]
+             formatted.append(f"[{i}] {title}\n    URL: {url}\n    {body}\n")
+-        
+-        return "\n".join(formatted)
++
++        result_text = "\n".join(formatted)
++        logger.info("Web search results for %s: %d results", query, len(results))
++        return result_text
+     except Exception as e:
++        logger.exception("Error performing web search for query: %s", query)
+         return f"Error performing web search: {str(e)}"
+ 
+ 
+ def web_scrape(url: str) -> str:
+     """Fetch and read the text content of a web page. Use this to read documentation, articles, Stack Overflow answers, or any web page after finding it via web_search."""
++    if not ENABLE_WEB:
++        logger.info("Web scrape blocked by configuration: %s", url)
++        return "Web scraping is disabled by AGENT_ENABLE_WEB."
+     console.print(f"  [{ACC}]≡ƒîÉ scrape:[/{ACC}] [dim]{url}[/dim]")
+     try:
+         req = urllib.request.Request(url, headers={
+@@ -388,37 +484,50 @@ def web_scrape(url: str) -> str:
+         # Truncate to save tokens
+         if len(text) > 12000:
+             text = text[:6000] + "\n\n... [TRUNCATED] ...\n\n" + text[-6000:]
+-        
++
++        logger.info("Web scrape successful: %s (length=%d)", url, len(text))
+         return f"Content from {url}:\n\n{text}"
+     except urllib.error.HTTPError as e:
++        logger.warning("HTTP error scraping %s: %s", url, e)
+         return f"HTTP Error {e.code}: {e.reason}"
+     except Exception as e:
++        logger.exception("Error scraping URL: %s", url)
+         return f"Error scraping {url}: {str(e)}"
+ 
+ 
+ def git_status() -> str:
+     """Show the current git status of the working directory - staged, modified, and untracked files."""
++    if not ENABLE_GIT:
++        logger.info("git_status blocked by configuration.")
++        return "Git tools are disabled by AGENT_ENABLE_GIT."
+     console.print(f"  [{S}]≡ƒöÇ git status[/{S}]")
+     try:
+         result = subprocess.run("git status --short", shell=True, capture_output=True, text=True, cwd=os.getcwd())
+         if result.returncode != 0:
++            logger.error("git status failed: %s", result.stderr.strip())
+             return f"Git error: {result.stderr.strip()}"
+         
+         output = result.stdout.strip()
+         if not output:
++            logger.info("git status: working tree clean")
+             return "Working tree clean. Nothing to commit."
+         
+         # Also get branch info
+         branch = subprocess.run("git branch --show-current", shell=True, capture_output=True, text=True, cwd=os.getcwd())
+         branch_name = branch.stdout.strip() if branch.returncode == 0 else "unknown"
+-        
++
++        logger.info("git status ok on branch %s", branch_name)
+         return f"Branch: {branch_name}\n\n{output}"
+     except Exception as e:
++        logger.exception("Error running git_status")
+         return f"Error: {str(e)}"
+ 
+ 
+ def git_diff() -> str:
+     """Show uncommitted changes (diff) in the working directory."""
++    if not ENABLE_GIT:
++        logger.info("git_diff blocked by configuration.")
++        return "Git tools are disabled by AGENT_ENABLE_GIT."
+     console.print(f"  [{S}]≡ƒöÇ git diff[/{S}]")
+     try:
+         result = subprocess.run("git diff", shell=True, capture_output=True, text=True, cwd=os.getcwd())
+@@ -428,19 +537,26 @@ def git_diff() -> str:
+             staged = subprocess.run("git diff --cached", shell=True, capture_output=True, text=True, cwd=os.getcwd())
+             output = staged.stdout.strip()
+             if not output:
++                logger.info("git diff: no uncommitted or staged changes")
+                 return "No uncommitted changes."
++            logger.info("git diff: staged-only changes")
+             return f"Staged changes:\n{output[:10000]}"
+         
+         if len(output) > 10000:
+             output = output[:10000] + "\n\n... [TRUNCATED - diff too long]"
+-        
++
++        logger.info("git diff produced output (%d chars)", len(output))
+         return output
+     except Exception as e:
++        logger.exception("Error running git_diff")
+         return f"Error: {str(e)}"
+ 
+ 
+ def git_commit(message: str) -> str:
+     """Stage all changes and create a git commit with the given message."""
++    if not ENABLE_GIT:
++        logger.info("git_commit blocked by configuration.")
++        return "Git tools are disabled by AGENT_ENABLE_GIT."
+     console.print(f"  [{S}]≡ƒöÇ git commit:[/{S}] [dim]{message}[/dim]")
+     try:
+         # Stage all
+@@ -451,8 +567,13 @@ def git_commit(message: str) -> str:
+             shell=True, capture_output=True, text=True, cwd=os.getcwd()
+         )
+         output = result.stdout.strip() if result.stdout else result.stderr.strip()
++        if result.returncode == 0:
++            logger.info("git commit succeeded: %s", message)
++        else:
++            logger.error("git commit failed: %s", output)
+         return output if output else "Γ£ô Committed successfully."
+     except Exception as e:
++        logger.exception("Error running git_commit")
+         return f"Error: {str(e)}"
+ 
+ 
+@@ -521,13 +642,16 @@ def detect_project() -> str:
+ #                             API SETUP
+ # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+ 
+-api_key = os.getenv("GEMINI_API_KEY")
+-if not api_key:
+-    console.print(f"[{ERR}]Γ£ù Error: GEMINI_API_KEY is not set in the .env file.[/{ERR}]")
+-    console.print(f"[{DIM}]  Create a .env file with: GEMINI_API_KEY=your_key_here[/{DIM}]")
+-    sys.exit(1)
+-
+-client = genai.Client(api_key=api_key)
++def create_client() -> genai.Client:
++    """Create a configured Google GenAI client, with clear error reporting."""
++    api_key = os.getenv("GEMINI_API_KEY")
++    if not api_key:
++        console.print(f"[{ERR}]Γ£ù Error: GEMINI_API_KEY is not set in the .env file.[/{ERR}]")
++        console.print(f"[{DIM}]  Create a .env file with: GEMINI_API_KEY=your_key_here[/{DIM}]")
++        logger.error("GEMINI_API_KEY missing; aborting chat startup.")
++        raise RuntimeError("GEMINI_API_KEY is not configured.")
++    logger.info("Initializing GenAI client for model=%s", MODEL_NAME)
++    return genai.Client(api_key=api_key)
+ 
+ SYSTEM_PROMPT = """You are Claude Code Max, an elite, legendary 10x AI software engineer running directly on the user's terminal. 
+ You possess unprecedented autonomy, razor-sharp intellect, and the ability to build, debug, and ship production-level code with zero hesitation.
+@@ -611,39 +735,57 @@ def chat_loop():
+     """The main interactive REPL (Read-Eval-Print Loop) for Claude Code Max"""
+ 
+     # ΓöÇΓöÇΓöÇ Welcome Banner ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    console.print(ALIEN_ASCII)
++    if UNICODE_SAFE:
++        console.print(ALIEN_ASCII)
++    else:
++        logger.warning("Unicode output not supported; using simple banner.")
++        print("CLAUDE CODE MAX")
+     
+     project_context = detect_project()
+     
+-    info_table = Table(show_header=False, box=None, padding=(0, 2))
+-    info_table.add_column(style=DIM)
+-    info_table.add_column(style="white")
+-    
+-    for line in project_context.split('\n'):
+-        if ':' in line:
+-            key, val = line.split(':', 1)
+-            info_table.add_row(key.strip(), val.strip())
+-    
+-    console.print(Panel(
+-        info_table,
+-        title=f"[{P}]CLAUDE CODE MAX[/{P}]",
+-        subtitle=f"[{DIM}]Type 'exit' to quit ΓÇó Session started[/{DIM}]",
+-        border_style=BORDER,
+-        padding=(1, 3)
+-    ))
+-    console.print()
++    if UNICODE_SAFE:
++        info_table = Table(show_header=False, box=None, padding=(0, 2))
++        info_table.add_column(style=DIM)
++        info_table.add_column(style="white")
++
++        for line in project_context.split('\n'):
++            if ':' in line:
++                key, val = line.split(':', 1)
++                info_table.add_row(key.strip(), val.strip())
++
++        console.print(Panel(
++            info_table,
++            title=f"[{P}]CLAUDE CODE MAX[/{P}]",
++            subtitle=f"[{DIM}]Type 'exit' to quit ΓÇó Session started[/{DIM}]",
++            border_style=BORDER,
++            padding=(1, 3)
++        ))
++        console.print()
++    else:
++        print()
++        print("=== CLAUDE CODE MAX ===")
++        print(project_context)
++        print()
+ 
+     # ΓöÇΓöÇΓöÇ Init Chat ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+     system_prompt = SYSTEM_PROMPT.format(project_context=project_context)
+ 
++    client = create_client()
+     chat = client.chats.create(
+-        model="gemini-2.5-flash",
++        model=MODEL_NAME,
+         config=types.GenerateContentConfig(
+             system_instruction=system_prompt,
+             tools=TOOLS,
+-            temperature=0.2,
++            temperature=TEMPERATURE,
++            max_output_tokens=MAX_OUTPUT_TOKENS,
+         )
+     )
++    logger.info(
++        "Chat session started (model=%s, temperature=%.3f, max_output_tokens=%d)",
++        MODEL_NAME,
++        TEMPERATURE,
++        MAX_OUTPUT_TOKENS,
++    )
+ 
+     msg_count = 0
+ 
+@@ -651,10 +793,14 @@ def chat_loop():
+     while True:
+         try:
+             # Prompt
+-            console.print()
+-            user_input = console.input(
+-                f"[{P}]Γ¥»[/{P}] "
+-            )
++            if UNICODE_SAFE:
++                console.print()
++                user_input = console.input(
++                    f"[{P}]Γ¥»[/{P}] "
++                )
++            else:
++                print()
++                user_input = input("> ")
+ 
+             if user_input.lower().strip() in ['exit', 'quit', '/exit', '/quit']:
+                 console.print(f"\n[{DIM}]Session ended. Duration: {format_elapsed()} ΓÇó {msg_count} messages.[/{DIM}]")
+@@ -673,6 +819,7 @@ def chat_loop():
+                 continue
+ 
+             msg_count += 1
++            logger.info("User input: %s", user_input)
+ 
+             # ΓöÇΓöÇΓöÇ Send to Gemini ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+             with console.status(
+@@ -685,13 +832,14 @@ def chat_loop():
+ 
+                 # ΓöÇΓöÇΓöÇ Tool Loop ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+                 tool_calls_total = 0
+-                while True:
++                for tool_iter in range(MAX_TOOL_ITERATIONS):
+                     if response.function_calls:
+                         function_responses = []
+                         for tool_call in response.function_calls:
+                             func_name = tool_call.name
+                             args = tool_call.args or {}
+                             tool_calls_total += 1
++                            logger.info("Tool call %s(%s)", func_name, args)
+ 
+                             status.update(f"[{S}]{func_name}...[/{S}]")
+ 
+@@ -702,9 +850,15 @@ def chat_loop():
+                                 except Exception as e:
+                                     result_str = f"Tool execution failed: {str(e)}"
+                                     console.print(f"  [{ERR}]Γ£ù {func_name} failed:[/{ERR}] [dim]{str(e)[:100]}[/dim]")
++                                    logger.exception("Tool %s failed", func_name)
+                             else:
+                                 result_str = f"Unknown tool: {func_name}"
+ 
++                            logger.info(
++                                "Tool result for %s: %s",
++                                func_name,
++                                result_str[:500],
++                            )
+                             function_responses.append(
+                                 types.Part.from_function_response(
+                                     name=func_name,
+@@ -716,23 +870,36 @@ def chat_loop():
+                         response = chat.send_message(function_responses)
+                     else:
+                         break
++                else:
++                    if response.function_calls:
++                        console.print(f"[{WARN}]ΓÜá Max tool iterations ({MAX_TOOL_ITERATIONS}) reached. Returning partial result.[/{WARN}]")
++                        logger.warning(
++                            "Max tool iterations (%s) reached; returning partial result.",
++                            MAX_TOOL_ITERATIONS,
++                        )
+ 
+             # ΓöÇΓöÇΓöÇ Print Response ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+             if response.text:
+                 console.print()
+                 console.print(Markdown(response.text))
++                logger.info("Model response: %s", response.text[:1000])
+ 
+             # Footer
+             footer_parts = [format_elapsed()]
+             if tool_calls_total > 0:
+                 footer_parts.append(f"{tool_calls_total} tool{'s' if tool_calls_total != 1 else ''}")
+-            console.print(f"[{DIM}]{'ΓöÇ' * 50}[/{DIM}]")
+-            console.print(f"[{DIM}]{' ΓÇó '.join(footer_parts)}[/{DIM}]")
++            if UNICODE_SAFE:
++                console.print(f"[{DIM}]{'ΓöÇ' * 50}[/{DIM}]")
++                console.print(f"[{DIM}]{' ΓÇó '.join(footer_parts)}[/{DIM}]")
++            else:
++                print("-" * 50)
++                print(" | ".join(footer_parts))
+ 
+         except KeyboardInterrupt:
+             console.print(f"\n[{DIM}]Interrupt. Type 'exit' to quit.[/{DIM}]")
+         except Exception as e:
+             console.print(f"\n[{ERR}]Error: {str(e)}[/{ERR}]")
++            logger.exception("Unhandled error in chat loop")
+ 
+ 
+ if __name__ == "__main__":
