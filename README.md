@@ -1,94 +1,51 @@
-<div align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&height=250&section=header&text=PerPage&fontSize=90&animation=fadeIn&fontAlignY=38&desc=Your%20Dynamic%20Web%20Experience&descAlignY=55&descAlign=62" />
+# 👽 Claude Code Max
 
-  # 🚀 PerPage
+**Claude Code Max** is an elite, highly autonomous AI software engineer that runs directly in your terminal. 
 
-  **A beautifully crafted, modern web application built with Node.js and EJS.**
+Built with an unapologetic focus on execution speed, fault tolerance, and developer autonomy, it functions as a legendary 10x CLI companion that investigates, plans, executes, and validates its own codebase changes without needing to ask for permission.
 
-  [![Live Preview](https://img.shields.io/badge/Live_Preview-View_App-00D8FF?style=for-the-badge&logo=render&logoColor=white)](https://perpage.onrender.com)
-  [![GitHub PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=for-the-badge)](https://github.com/adityabhise1111/perpage/pulls)
-  [![Made with EJS](https://img.shields.io/badge/Made_with-EJS-A91E50?style=for-the-badge&logo=javascript&logoColor=white)](https://ejs.co/)
-  
-  ---
-</div>
+## ✨ Features
 
-## ✨ Project Overview
-**PerPage** is a lightning-fast, highly scalable web application designed to deliver dynamic, continuous frontend experiences. Built on top of a rock-solid **Node.js** architecture and utilizing **EJS** for ultra-responsive server-side rendering, this project is designed for seamless user interaction.
+- **Hybrid Model Routing**: Defaults to the powerful `gemini-2.5-flash` model via Google GenAI SDK. If API rate limits are hit, it intelligently falls back to Groq (Llama 3) for high-speed, cost-effective continuity.
+- **Deep System Autonomy**: Investigates code using local file tools, searches the web for documentation or stackoverflow answers, and directly executes bash commands (with safety guards).
+- **Advanced Context Management**: Manages session state natively via `.claude_session.json` and chunk-reads large files to preserve token windows.
+- **Beautiful Terminal TUI**: Built with `Rich`, featuring an alien-coral premium UI, animated spinners, diff-syntax highlighting, and detailed task logs.
 
-Currently deployed successfully on Render, it guarantees high uptime and accessibility from anywhere in the world.
+## 🚀 Quickstart
 
-<br>
-
-## 🛠️ Tech Stack & Technologies
-
-| Layer | Technology | Description |
-| :--- | :--- | :--- |
-| **Backend Core** | ![Node.js](https://img.shields.io/badge/Node.js-43853D?style=flat-square&logo=node.js&logoColor=white) | Lightweight, non-blocking JavaScript runtime |
-| **Templating** | ![EJS](https://img.shields.io/badge/EJS-B4CA65?style=flat-square&logo=javascript&logoColor=black) | Embedded JavaScript templates for rapid HTML rendering |
-| **Logic** | ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black) | Advanced DOM manipulation & routing |
-| **Hosting** | ![Render](https://img.shields.io/badge/Render-46E3B7?style=flat-square&logo=render&logoColor=white) | Global cloud application hosting |
-
-<br>
-
-## 🚀 Getting Started
-
-Follow these simple steps to get a local development environment up and running on your machine instantly!
-
-### 1️⃣ Prerequisites
-Before you begin, ensure you have the following installed:
-* [Node.js](https://nodejs.org/) (v14.x or higher recommended)
-* [npm](https://www.npmjs.com/) (usually comes bundled with Node.js)
-* [Git](https://git-scm.com/)
-
-### 2️⃣ Installation
-Grab the code directly from the repository:
+1. Clone the repository:
 ```bash
-# Clone the repository
-git clone https://github.com/adityabhise1111/perpage.git
-
-# Navigate into the project folder
-cd perpage
-
-# Install all required dependencies
-npm install
+git clone https://github.com/rahul-kumar-362/claudeCopy.git
+cd claudeCopy
 ```
 
-### 3️⃣ Running Locally
-Launch the development server to see the magic happen:
+2. Install the necessary dependencies:
 ```bash
-# Start the application
-npm start
+pip install -r requirements.txt
 ```
-*The app will be accessible at `http://localhost:3000` (or the port defined in your environment).*
 
-<br>
+3. Configure your API Keys in a `.env` file:
+```env
+GEMINI_API_KEY=your_google_genai_key
+GEMINI_API_KEY_2=your_backup_google_genai_key
+GROQ_API_KEY=your_backup_groq_key
+```
+*(Claude Code Max natively rotates through available Gemini keys if rate-limited!)*
 
-## 🌍 Live Deployment
+4. Launch the Agent:
+```bash
+python agent.py
+```
 
-Experience PerPage live in production! The project is automatically deployed and continuously integrated via Render.
-
-👉 **[View the Live Application Here](https://perpage.onrender.com)**
-
-<br>
-
-## 🤝 Contributing
-
-We love contributions! Since **PerPage** is actively in progress, any help is immensely appreciated—whether it's fixing bugs, improving styling, or adding brand new features.
-
-1. **Fork** the repository
-2. **Create** your feature branch: `git checkout -b feature/AmazingFeature`
-3. **Commit** your changes: `git commit -m 'Add some AmazingFeature'`
-4. **Push** to the branch: `git push origin feature/AmazingFeature`
-5. **Open** a Pull Request!
-
-<br>
-
-## 🐛 Bug Reports & Feedback
-
-Found an issue or have a great idea for a new feature? 
-Please feel free to open a new [GitHub Issue](https://github.com/adityabhise1111/perpage/issues) so we can look into it!
+## 🛠️ Built-in Toolset
+- `run_command` / `run_background_command`
+- `read_file` / `read_file_chunk`
+- `write_file` / `replace_in_file` / `edit_file_lines`
+- `lint_code`
+- `list_dir` / `search_files`
+- `web_search` / `web_scrape`
+- Full `git` suite (`git_status`, `git_diff`, `git_commit`)
 
 ---
-<div align="center">
-  <p>Built with ❤️ by <a href="https://github.com/adityabhise1111">Aditya</a> and Contributors.</p>
-</div>
+
+*“Speak with the authority and brevity of a senior principal engineer. No fluff. Just results.”*
