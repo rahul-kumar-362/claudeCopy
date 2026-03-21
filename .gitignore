@@ -1,3 +1,9 @@
 .env
 __pycache__/
 *.pyc
+*.log
+.claude_session.json
+.venv/
+venv/
+.DS_Store
+Thumbs.db
